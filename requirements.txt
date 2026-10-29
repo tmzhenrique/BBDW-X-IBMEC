@@ -1,4 +1,6 @@
-pandas
-numpy
-scikit-learn>=1.3
-joblib>=1.3
+# Python 3.14 (ver .python-version). Versões usadas para gerar os templates e as métricas.
+pandas==3.1.0
+numpy==2.4.6
+scikit-learn==1.9.1   # o modelo salvo em estimativas/artefatos/ foi treinado com o scikit-learn; outra versão pode exigir re-treino
+joblib==1.6.0
+reportlab==5.1.0      # só para metricas/exportar_pdf.py (versão PDF do relatório de métricas)
