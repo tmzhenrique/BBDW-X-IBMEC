@@ -298,6 +298,46 @@ function opcoesSeguro(e) {
   ];
 }
 
+// Posição da opção com esse rótulo (as listas mudam conforme as respostas anteriores).
+const indice = (opcoes, rotulo) => { const i = opcoes.findIndex((o) => o.rotulo === rotulo); return i < 0 ? null : i; };
+
+const USO_ALUGADO = "Está alugado para outra pessoa";
+
+// Sem "Moro nele" quando o cliente acabou de dizer que mora em outro endereço.
+function opcoesUso(e) {
+  const moraFora = e.respondidas.includes("residencia_principal");
+  return [
+    ...(moraFora ? [] : [{ rotulo: "Moro nele", efeito: setar("uso", "HABITUAL") }]),
+    { rotulo: "Casa de temporada / lazer", efeito: setar("uso", "TEMPORADA") },
+    { rotulo: USO_ALUGADO, efeito: varios(setar("uso", "ALUGADO_TERCEIROS"), setar("vinculo", "LOCADOR")) },
+    { rotulo: "Está desocupado", efeito: setar("uso", "DESOCUPADO") },
+    { rotulo: NAO_SEI_OPCAO, efeito: manter("uso") },
+  ];
+}
+
+// "Eu alugo este imóvel" foi trocado: servia tanto para quem paga quanto para quem recebe o aluguel.
+const ROTULOS_VINCULO = {
+  PROPRIETARIO_QUITADO: "É meu e já está quitado",
+  PROPRIETARIO_FINANCIADO: "É meu e está financiado em outra instituição",
+  INQUILINO: "Moro de aluguel (sou inquilino)",
+  LOCADOR: "É meu e está alugado para outra pessoa",
+  SOB_GESTAO: "Administro o imóvel (sob gestão)",
+  CEDIDO: "É cedido / emprestado",
+};
+// "Alugado para outra pessoa" não aparece para quem acabou de dizer que mora no imóvel.
+const valoresVinculo = (e) => Object.keys(ROTULOS_VINCULO).filter((v) => v !== "LOCADOR" || e.f.uso.valor !== "HABITUAL");
+const opcoesVinculo = (e) => [
+  ...valoresVinculo(e).map((v) => ({ rotulo: ROTULOS_VINCULO[v], efeito: setar("vinculo", v) })),
+  { rotulo: NAO_SEI_OPCAO, efeito: manter("vinculo") },
+];
+// Só sugere o que os dados indicam: paga aluguel -> inquilino; recebe aluguel -> locador.
+// Sem esses sinais não há sugestão (não ter financiamento não prova que o imóvel está quitado).
+function sugestaoVinculo(e) {
+  const alvo = e.caso.pagamento_aluguel_recorrente === "SIM" ? "INQUILINO" : e.f.vinculo.valor === "LOCADOR" ? "LOCADOR" : null;
+  const i = valoresVinculo(e).indexOf(alvo);
+  return i < 0 ? null : i;
+}
+
 export const BANCO = [
   {
     id: "residencia_principal", campo: "uso", ordem: 0,
@@ -313,14 +353,8 @@ export const BANCO = [
     id: "uso", campo: "uso", ordem: 1,
     gatilho: (e) => ["nenhuma", "baixa"].includes(e.f.uso.confianca) && !precisaResidencia(e),
     texto: () => "Como este imóvel é usado hoje?",
-    opcoes: () => [
-      { rotulo: "Moro nele", efeito: setar("uso", "HABITUAL") },
-      { rotulo: "Casa de temporada / lazer", efeito: setar("uso", "TEMPORADA") },
-      { rotulo: "Está alugado para outra pessoa", efeito: varios(setar("uso", "ALUGADO_TERCEIROS"), setar("vinculo", "LOCADOR")) },
-      { rotulo: "Está desocupado", efeito: setar("uso", "DESOCUPADO") },
-      { rotulo: NAO_SEI_OPCAO, efeito: manter("uso") },
-    ],
-    sugestao: (e) => (e.f.uso.valor === "ALUGADO_TERCEIROS" ? 2 : null),
+    opcoes: opcoesUso,
+    sugestao: (e) => (e.f.uso.valor === "ALUGADO_TERCEIROS" ? indice(opcoesUso(e), USO_ALUGADO) : null),
   },
   {
     id: "material", campo: "material", ordem: 2,
@@ -333,7 +367,7 @@ export const BANCO = [
       { rotulo: "Madeira ou outro material inflamável", efeito: setar("material", "MADEIRA") },
       { rotulo: NAO_SEI_OPCAO, efeito: setar("material", NAO_SEI) },
     ],
-    sugestao: () => 0,
+    // sem sugestão: a pergunta só aparece quando não há dado de material
   },
   {
     id: "material_predominante", campo: "material", ordem: 3,
@@ -351,11 +385,11 @@ export const BANCO = [
     texto: (e) => (e.caso.gastos_material_construcao_24m > 0
       ? `Vimos ${brl(e.caso.gastos_material_construcao_24m)} em compras de material de construção nos últimos 24 meses. `
       : "") + "O imóvel está em obra ou reforma agora?",
+    // "Não" e "a obra já foi concluída" respondiam a mesma coisa (sem obra agora): ficou uma opção só.
     opcoes: () => [
-      { rotulo: "Não", efeito: setar("obra", "NAO") },
-      { rotulo: "A obra já foi concluída", efeito: setar("obra", "CONCLUIDA") },
+      { rotulo: "Não, nenhuma obra agora", efeito: setar("obra", "NAO") },
       { rotulo: "Só manutenção (pintura, pequenos reparos)", efeito: setar("obra", "MANUTENCAO") },
-      { rotulo: "Sim, em andamento", efeito: setar("obra", "EM_ANDAMENTO") },
+      { rotulo: "Sim, obra ou reforma em andamento", efeito: setar("obra", "EM_ANDAMENTO") },
       { rotulo: NAO_SEI_OPCAO, efeito: setar("obra", NAO_SEI) },
     ],
   },
@@ -369,15 +403,8 @@ export const BANCO = [
     id: "vinculo", campo: "vinculo", ordem: 6,
     gatilho: (e) => ["nenhuma", "baixa"].includes(e.f.vinculo.confianca),
     texto: textoVinculo,
-    opcoes: () => [
-      { rotulo: "É meu e já está quitado", efeito: setar("vinculo", "PROPRIETARIO_QUITADO") },
-      { rotulo: "É meu e está financiado em outra instituição", efeito: setar("vinculo", "PROPRIETARIO_FINANCIADO") },
-      { rotulo: "Eu alugo este imóvel", efeito: setar("vinculo", "INQUILINO") },
-      { rotulo: "Administro o imóvel (sob gestão)", efeito: setar("vinculo", "SOB_GESTAO") },
-      { rotulo: "É cedido / emprestado", efeito: setar("vinculo", "CEDIDO") },
-      { rotulo: NAO_SEI_OPCAO, efeito: manter("vinculo") },
-    ],
-    sugestao: (e) => (e.caso.pagamento_aluguel_recorrente === "SIM" ? 2 : 0),
+    opcoes: opcoesVinculo,
+    sugestao: sugestaoVinculo,
   },
   {
     id: "bens", campo: "bens", ordem: 7,

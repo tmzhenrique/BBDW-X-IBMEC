@@ -502,6 +502,55 @@ def _opcoes_seguro(e):
             Opcao(NAO_SEI_OPCAO, setar("seguro_bb", NAO_SEI))]
 
 
+def _indice(opcoes: list[Opcao], rotulo: str) -> int | None:
+    """Posição da opção com esse rótulo (as listas mudam conforme as respostas anteriores)."""
+    return next((i for i, o in enumerate(opcoes) if o.rotulo == rotulo), None)
+
+
+USO_ALUGADO = "Está alugado para outra pessoa"
+
+
+def _opcoes_uso(e):
+    """Sem "Moro nele" quando o cliente acabou de dizer que mora em outro endereço."""
+    mora_fora = "residencia_principal" in e["respondidas"]
+    return ([] if mora_fora else [Opcao("Moro nele", setar("uso", "HABITUAL"))]) + [
+        Opcao("Casa de temporada / lazer", setar("uso", "TEMPORADA")),
+        Opcao(USO_ALUGADO, varios(setar("uso", "ALUGADO_TERCEIROS"), setar("vinculo", "LOCADOR"))),
+        Opcao("Está desocupado", setar("uso", "DESOCUPADO")),
+        Opcao(NAO_SEI_OPCAO, manter("uso")),
+    ]
+
+
+# "Eu alugo este imóvel" foi trocado: servia tanto para quem paga quanto para quem recebe o aluguel.
+ROTULOS_VINCULO = {
+    "PROPRIETARIO_QUITADO": "É meu e já está quitado",
+    "PROPRIETARIO_FINANCIADO": "É meu e está financiado em outra instituição",
+    "INQUILINO": "Moro de aluguel (sou inquilino)",
+    "LOCADOR": "É meu e está alugado para outra pessoa",
+    "SOB_GESTAO": "Administro o imóvel (sob gestão)",
+    "CEDIDO": "É cedido / emprestado",
+}
+
+
+def _valores_vinculo(e) -> list[str]:
+    """"Alugado para outra pessoa" não aparece para quem acabou de dizer que mora no imóvel."""
+    return [v for v in ROTULOS_VINCULO if v != "LOCADOR" or e["f"]["uso"]["valor"] != "HABITUAL"]
+
+
+def _opcoes_vinculo(e):
+    return ([Opcao(ROTULOS_VINCULO[v], setar("vinculo", v)) for v in _valores_vinculo(e)]
+            + [Opcao(NAO_SEI_OPCAO, manter("vinculo"))])
+
+
+def _sugestao_vinculo(e):
+    """Só sugere o que os dados indicam: paga aluguel -> inquilino; recebe aluguel -> locador.
+    Sem esses sinais não há sugestão (não ter financiamento não prova que o imóvel está quitado)."""
+    c, v = e["caso"], e["f"]["vinculo"]["valor"]
+    alvo = "INQUILINO" if c["pagamento_aluguel_recorrente"] == "SIM" else "LOCADOR" if v == "LOCADOR" else None
+    vals = _valores_vinculo(e)
+    return vals.index(alvo) if alvo in vals else None
+
+
 BANCO: list[Pergunta] = [
     Pergunta(
         id="residencia_principal", campo="uso", ordem=0,
@@ -518,15 +567,8 @@ BANCO: list[Pergunta] = [
         id="uso", campo="uso", ordem=1,
         gatilho=lambda e: e["f"]["uso"]["confianca"] in ("nenhuma", "baixa") and not precisa_residencia(e),
         texto=lambda e: "Como este imóvel é usado hoje?",
-        opcoes=lambda e: [
-            Opcao("Moro nele", setar("uso", "HABITUAL")),
-            Opcao("Casa de temporada / lazer", setar("uso", "TEMPORADA")),
-            Opcao("Está alugado para outra pessoa",
-                  varios(setar("uso", "ALUGADO_TERCEIROS"), setar("vinculo", "LOCADOR"))),
-            Opcao("Está desocupado", setar("uso", "DESOCUPADO")),
-            Opcao(NAO_SEI_OPCAO, manter("uso")),
-        ],
-        sugestao=lambda e: 2 if e["f"]["uso"]["valor"] == "ALUGADO_TERCEIROS" else None,
+        opcoes=_opcoes_uso,
+        sugestao=lambda e: _indice(_opcoes_uso(e), USO_ALUGADO) if e["f"]["uso"]["valor"] == "ALUGADO_TERCEIROS" else None,
     ),
     Pergunta(
         id="material", campo="material", ordem=2,
@@ -539,7 +581,7 @@ BANCO: list[Pergunta] = [
             Opcao("Madeira ou outro material inflamável", setar("material", "MADEIRA")),
             Opcao(NAO_SEI_OPCAO, setar("material", NAO_SEI)),
         ],
-        sugestao=lambda e: 0,
+        # sem sugestão: a pergunta só aparece quando não há dado de material
     ),
     Pergunta(  # só aparece se a resposta anterior foi "Mista"
         id="material_predominante", campo="material", ordem=3,
@@ -558,11 +600,11 @@ BANCO: list[Pergunta] = [
                           "de construção nos últimos 24 meses. ")
                          if e["caso"]["gastos_material_construcao_24m"] > 0 else "")
                         + "O imóvel está em obra ou reforma agora?",
+        # "Não" e "a obra já foi concluída" respondiam a mesma coisa (sem obra agora): ficou uma opção só.
         opcoes=lambda e: [
-            Opcao("Não", setar("obra", "NAO")),
-            Opcao("A obra já foi concluída", setar("obra", "CONCLUIDA")),
+            Opcao("Não, nenhuma obra agora", setar("obra", "NAO")),
             Opcao("Só manutenção (pintura, pequenos reparos)", setar("obra", "MANUTENCAO")),
-            Opcao("Sim, em andamento", setar("obra", "EM_ANDAMENTO")),
+            Opcao("Sim, obra ou reforma em andamento", setar("obra", "EM_ANDAMENTO")),
             Opcao(NAO_SEI_OPCAO, setar("obra", NAO_SEI)),
         ],
     ),
@@ -576,15 +618,8 @@ BANCO: list[Pergunta] = [
         id="vinculo", campo="vinculo", ordem=6,
         gatilho=lambda e: e["f"]["vinculo"]["confianca"] in ("nenhuma", "baixa"),
         texto=_texto_vinculo,
-        opcoes=lambda e: [
-            Opcao("É meu e já está quitado", setar("vinculo", "PROPRIETARIO_QUITADO")),
-            Opcao("É meu e está financiado em outra instituição", setar("vinculo", "PROPRIETARIO_FINANCIADO")),
-            Opcao("Eu alugo este imóvel", setar("vinculo", "INQUILINO")),
-            Opcao("Administro o imóvel (sob gestão)", setar("vinculo", "SOB_GESTAO")),
-            Opcao("É cedido / emprestado", setar("vinculo", "CEDIDO")),
-            Opcao(NAO_SEI_OPCAO, manter("vinculo")),
-        ],
-        sugestao=lambda e: 2 if e["caso"]["pagamento_aluguel_recorrente"] == "SIM" else 0,
+        opcoes=_opcoes_vinculo,
+        sugestao=_sugestao_vinculo,
     ),
     Pergunta(  # bens estimados: confirmação por faixa, pré-marcada na faixa da estimativa
         id="bens", campo="bens", ordem=7,
@@ -979,7 +1014,7 @@ def exemplos(casos: dict) -> None:
     c = achar(lambda c, e: precisa_residencia(e))
     mostrar("B1) Dois endereços, cliente mora neste", c, respostas={"residencia_principal": 0})
     mostrar("B2) Mesmo cliente, mora no outro: a próxima pergunta muda", c,
-            respostas={"residencia_principal": 1, "uso": 1})
+            respostas={"residencia_principal": 1, "uso": 0})  # 0 = temporada ("Moro nele" sai da lista)
 
     c = achar(lambda c, e: e["f"]["material"]["valor"] is None and e["f"]["obra"]["valor"] is not None
               and e["f"]["seguro_bb"]["valor"] is not None)

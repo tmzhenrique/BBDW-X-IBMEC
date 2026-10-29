@@ -19,11 +19,23 @@ const ESSENCIAL = ["INCENDIO_RAIO_EXPLOSAO_FUMACA", "DANOS_POR_AGUA", "VENDAVAL_
 const PRATICO = [...ESSENCIAL, "ROUBO_FURTO_ARROMBAMENTO", "QUEBRA_DE_VIDROS"];
 const TOTAL = [...PRATICO, "RESPONSABILIDADE_CIVIL_FAMILIAR", "PERDA_PAGAMENTO_ALUGUEL", "DESPESAS_EMERGENCIAIS"];
 
+// Pacotes de assistência e serviços conforme o guia final (9.2). Limites e quantidades: manuais oficiais.
+export const ASSISTENCIAS = {
+  CASA_EM_APUROS: ["Casa em Apuros", "chaveiro, eletricista, encanador, desentupimento, cobertura provisória de telhado e limpeza após sinistro"],
+  CASA_FUNCIONANDO: ["Casa Funcionando", "conserto de eletrodomésticos, instalação de fogão e cooktop, ar-condicionado e televisão"],
+  CASA_ARRUMADA: ["Casa Arrumada", "pequenos serviços de instalação, fixação, montagem, descarte e organização"],
+  CASA_LIMPA: ["Casa Limpa", "limpeza de calhas, ralos, caixa de gordura, ar-condicionado, caixa d’água e placa solar"],
+  CASA_SEM_PRAGAS: ["Casa sem Pragas", "desinsetização"],
+  CASA_SEGURA: ["Casa Segura", "check-up residencial, olho mágico, película de box, fechadura eletrônica e tela de proteção"],
+  BENEFICIO_PREMIUM: ["Benefício Premium", "um por ano: assistente virtual, fechadura eletrônica ou decoração online"],
+};
+const ASS_ESSENCIAL = ["CASA_EM_APUROS"];
+const ASS_PRATICO = [...ASS_ESSENCIAL, "CASA_FUNCIONANDO", "CASA_ARRUMADA", "CASA_LIMPA"];
+const ASS_TOTAL = [...ASS_PRATICO, "CASA_SEM_PRAGAS", "CASA_SEGURA", "BENEFICIO_PREMIUM"];
+
 export const PLANOS = {
-  ESSENCIAL: { nome: "Essencial", coberturas: ESSENCIAL, assistencia: "Casa em Apuros" },
-  // Pacotes de assistência conforme o guia final (9.2).
-  PRATICO: { nome: "Prático", coberturas: PRATICO, assistencia: "Casa em Apuros, Casa Funcionando, Casa Arrumada e Casa Limpa" },
-  TOTAL: { nome: "Total", coberturas: TOTAL,
-    assistencia: "Tudo do Prático + Casa sem Pragas, Casa Segura e Benefício Premium (assistente virtual, fechadura eletrônica ou decoração online)" },
+  ESSENCIAL: { nome: "Essencial", coberturas: ESSENCIAL, assistencias: ASS_ESSENCIAL },
+  PRATICO: { nome: "Prático", coberturas: PRATICO, assistencias: ASS_PRATICO },
+  TOTAL: { nome: "Total", coberturas: TOTAL, assistencias: ASS_TOTAL },
 };
 export const ORDEM = ["ESSENCIAL", "PRATICO", "TOTAL"];

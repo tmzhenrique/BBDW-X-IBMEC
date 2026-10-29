@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
-import { CASOS, DESTAQUES } from "./casos.js";
+import { APRESENTACAO, CASOS, DESTAQUES } from "./casos.js";
 import {
-  CONFIRMO, DESTINO_REVISAO, NAO_E_O_CASO, NAO_SEI, REST,
+  CONFIRMO, DESTINO_REVISAO, NAO_E_O_CASO, NAO_SEI, PEND, REST, SEM, itensDeclaracao, regras,
   acao, brl, coberturas, copia, elegibilidade, estadoInicial, observacoes, pendencias,
   POR_ID, decisoes, fraseEstimativa,
   avaliacaoPlano, proxima, responder, responderDeclaracao, responderFaixa, simularOpcoes, sugestaoDe,
 } from "./engine.js";
-import { COBERTURAS, ORDEM, PLANOS } from "./planos.js";
+import { ASSISTENCIAS, COBERTURAS, ORDEM, PLANOS } from "./planos.js";
+import { PREMISSAS_PRECO, precoPlano, reais } from "./preco.js";
 import { CALCULADORA, PRECOS, equivalencia, totalCalculadora } from "./referencias.js";
 
 // Perguntas respondidas com faixa livre (controle de mínimo e máximo) em vez de opções prontas.
@@ -31,14 +32,14 @@ const PERGUNTAS_FAIXA = new Set(Object.keys(FAIXA_CONFIG));
 // Rótulos de exibição
 // --------------------------------------------------------------------------
 const CAMPOS = {
-  tipo: "Tipo de imóvel", uso: "Uso", vinculo: "Sua relação", material: "Paredes externas",
+  tipo: "Tipo de imóvel", padrao: "Padrão construtivo", uso: "Uso", vinculo: "Sua relação", material: "Paredes externas",
   obra: "Obra", area: "Área", bens: "Bens no imóvel", seguro_bb: "Seguro BB neste endereço",
 };
 const VALORES = {
   APARTAMENTO: "Apartamento", CASA: "Casa", CASA_CONDOMINIO: "Casa em condomínio",
   ALVENARIA: "Alvenaria", MADEIRA: "Madeira", MADEIRA_PREFABRICADA: "Madeira pré-fabricada", MISTA: "Mista",
   ALVENARIA_PREDOMINANTE: "Predominância de alvenaria", COMBUSTIVEL_PREDOMINANTE: "Predominância de madeira",
-  NAO: "Sem obra", CONCLUIDA: "Obra concluída", MANUTENCAO: "Só manutenção", EM_ANDAMENTO: "Em andamento",
+  NAO: "Sem obra", MANUTENCAO: "Só manutenção", EM_ANDAMENTO: "Em andamento",
   [NAO_SEI]: "Não sabe",
   HABITUAL: "Moradia", TEMPORADA: "Temporada", ALUGADO_TERCEIROS: "Alugado a terceiros", DESOCUPADO: "Desocupado",
   PROPRIETARIO_QUITADO: "Proprietário (quitado)", PROPRIETARIO_FINANCIADO: "Proprietário (financiado)",
@@ -92,23 +93,29 @@ export default function App() {
   const caso = CASOS.find((c) => c.imovel_id === casoId);
   const [historico, setHistorico] = useState(() => [estadoInicial(caso)]);
   const [etapa, setEtapa] = useState("inicio");
-  const [completo, setCompleto] = useState(false); // false = One Click Buy (sem refino)
   // "Editar" de uma estimativa na declaração abre a página de faixa daquele campo e depois volta
   const [editando, setEditando] = useState(null);
   // respostas da declaração ficam aqui para não se perderem ao ir editar uma estimativa e voltar
   const [respDeclaracao, setRespDeclaracao] = useState({});
+  // plano e valores escolhidos no Resultado; vendoValor abre a página de valor (Contratar)
+  const [escolha, setEscolha] = useState(null);
+  const [vendoValor, setVendoValor] = useState(false);
+  const [vendoEspecialista, setVendoEspecialista] = useState(false);
   const e = historico[historico.length - 1];
-  const passo = etapa === "fluxo" && !editando ? proxima(e, completo) : null;
+  // Uma jornada só, a mesma do lote: perguntas de refino (P3) entram quando valem, e o cliente pode pular.
+  const passo = etapa === "fluxo" && !editando ? proxima(e) : null;
   const fim = etapa === "fluxo" && !editando && passo === null;
+  const etapaAtual = etapa === "inicio" ? 0 : fim ? (vendoValor ? 4 : 3) : editando || passo?.tipo === "declaracao" ? 2 : 1;
 
-  const limpar = () => { setEtapa("inicio"); setEditando(null); setRespDeclaracao({}); };
+  const sairDoValor = () => { setEscolha(null); setVendoValor(false); setVendoEspecialista(false); };
+  const limpar = () => { setEtapa("inicio"); setEditando(null); setRespDeclaracao({}); sairDoValor(); };
   const trocarCaso = (id) => {
     setCasoId(id);
     setHistorico([estadoInicial(CASOS.find((c) => c.imovel_id === id))]);
     limpar();
   };
-  const avancar = (novo) => setHistorico((h) => [...h, novo]);
-  const voltar = () => (historico.length > 1 ? setHistorico((h) => h.slice(0, -1)) : setEtapa("inicio"));
+  const avancar = (novo) => { setHistorico((h) => [...h, novo]); sairDoValor(); };
+  const voltar = () => { sairDoValor(); historico.length > 1 ? setHistorico((h) => h.slice(0, -1)) : setEtapa("inicio"); };
   const reiniciar = () => { setHistorico([estadoInicial(caso)]); limpar(); };
   const salvarEdicao = (novo) => { avancar(novo); setEditando(null); };
 
@@ -116,16 +123,13 @@ export default function App() {
     <div className="app">
       <header className="topo">
         <div className="topo-in">
-          <div className="marca">
-            <span className="marca-icone" aria-hidden>⌂</span>
-            <div>
-              <strong>Seguro Residencial</strong>
-              <small>Protótipo · Time Vector</small>
-            </div>
-          </div>
+          <Marca />
           <label className="demo">
-            <span>Imóvel da base de teste</span>
+            <span>Modo apresentação · imóvel da base de teste</span>
             <select value={casoId} onChange={(ev) => trocarCaso(ev.target.value)}>
+              <optgroup label="Jornadas da apresentação">
+                {APRESENTACAO.map((c) => <option key={c.imovel_id} value={c.imovel_id}>{c.nome} · {c.jornada.jornada}</option>)}
+              </optgroup>
               <optgroup label="Um caso real para cada caminho">
                 {DESTAQUES.map((c) => <option key={c.imovel_id} value={c.imovel_id}>{c.imovel_id} · {c.destaque}</option>)}
               </optgroup>
@@ -137,13 +141,12 @@ export default function App() {
         </div>
       </header>
 
-      <main className="grade">
+      <main className={`grade${vendoEspecialista ? " larga" : ""}`}>
         <section className="principal">
-          {etapa === "inicio" && (
-            <Inicio e={e} completo={completo} setCompleto={setCompleto} onComecar={() => setEtapa("fluxo")} />
-          )}
+          {!vendoEspecialista && <Etapas atual={etapaAtual} desfecho={fim ? acao(e)[0] : null} />}
+          {etapa === "inicio" && <Inicio e={e} onComecar={() => setEtapa("fluxo")} />}
           {passo?.tipo === "pergunta" && (
-            <Pergunta key={e.respondidas.length + passo.p.id} e={e} passo={passo} completo={completo}
+            <Pergunta key={e.respondidas.length + passo.p.id} e={e} passo={passo}
               onResponder={(i) => avancar(responder(e, passo.p, i, passo.nivel))}
               onResponderFaixa={(lo, hi) => avancar(responderFaixa(e, passo.p, lo, hi, passo.nivel))}
               onPular={() => avancar({ ...copia(e), respondidas: [...e.respondidas, passo.p.id], refinos: e.refinos + 1 })}
@@ -160,23 +163,71 @@ export default function App() {
               onResponder={(i) => salvarEdicao(responder(e, POR_ID[editando], i, 2))}
               onVoltar={() => setEditando(null)} />
           )}
-          {fim && <Resultado e={e} completo={completo} onVoltar={voltar} onReiniciar={reiniciar} />}
+          {fim && !vendoValor && !vendoEspecialista && (
+            <Resultado e={e} inicial={escolha} onVoltar={voltar} onReiniciar={reiniciar}
+              onEspecialista={() => { setVendoEspecialista(true); window.scrollTo(0, 0); }}
+              onContratar={(plano, valores) => { setEscolha({ plano, valores }); setVendoValor(true); window.scrollTo(0, 0); }} />
+          )}
+          {fim && vendoEspecialista && (
+            <Especialista e={e} historico={historico} respDeclaracao={respDeclaracao}
+              onVoltar={() => { setVendoEspecialista(false); window.scrollTo(0, 0); }} />
+          )}
+          {fim && vendoValor && <Valor e={e} escolha={escolha} onVoltar={() => { setVendoValor(false); window.scrollTo(0, 0); }} />}
         </section>
-        <Painel e={e} />
       </main>
+      <footer className="rodape">
+        Protótipo acadêmico do Datathon Ibmec × BB Seguros, feito pelo Time Vector. Não é um canal oficial de contratação.
+      </footer>
     </div>
+  );
+}
+
+// Logotipo oficial: coloque o arquivo em frontend/public/logos/bb-seguros.svg. Sem ele, aparece a assinatura em texto.
+function Marca() {
+  const [logo, setLogo] = useState(true);
+  return (
+    <div className="marca">
+      {logo
+        ? <img className="marca-logo" src="/logos/bb-seguros.svg" alt="BB Seguros" onError={() => setLogo(false)} />
+        : <span className="marca-bb" role="img" aria-label="BB Seguros"><b>BB</b><span>Seguros</span></span>}
+      <span className="marca-div" aria-hidden />
+      <div className="marca-txt">
+        <strong>Seguro Residencial</strong>
+        <small>Protótipo · Time Vector</small>
+      </div>
+    </div>
+  );
+}
+
+// Etapas finais conforme o desfecho: plano e valor, especialista ou revisão da apólice.
+const ETAPAS = ["Seus dados", "Perguntas", "Confirmação"];
+const ULTIMA = { ENCAMINHAR_HUMANO: "Especialista", REVISAO_APOLICE: "Sua apólice" };
+function Etapas({ atual, desfecho }) {
+  const finais = ULTIMA[desfecho] ? [ULTIMA[desfecho]] : ["Seu plano", "Valor"];
+  return (
+    <ol className="etapas" aria-label="Etapas da contratação">
+      {[...ETAPAS, ...finais].map((t, i) => (
+        <li key={t} className={i < atual ? "feita" : i === atual ? "atual" : ""} aria-current={i === atual ? "step" : undefined}>
+          <span className="etapa-num" aria-hidden>{i < atual ? "✓" : i + 1}</span>
+          <span className="etapa-txt">{t}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
 // --------------------------------------------------------------------------
 // Telas
 // --------------------------------------------------------------------------
-function Inicio({ e, completo, setCompleto, onComecar }) {
+function Inicio({ e, onComecar }) {
   const decisao = decisoes(e).length;
   const campos = camposVisiveis(e);
   const sabidos = campos.filter(([, c]) => c.origem !== "AUSENTE").length;
   return (
     <div className="cartao entrada">
+      {e.caso.jornada && (
+        <p className="jornada-demo"><b>{e.caso.jornada.jornada}</b> · {e.caso.jornada.roteiro}</p>
+      )}
       <p className="sobretitulo">Olá, {e.caso.nome}</p>
       <h1>Já adiantamos {sabidos} de {campos.length} informações do seu imóvel</h1>
       <p className="endereco">{e.caso.endereco_txt}</p>
@@ -190,19 +241,7 @@ function Inicio({ e, completo, setCompleto, onComecar }) {
         {campos.map(([k, c]) => <LinhaCampo key={k} campo={k} c={c} />)}
       </ul>
 
-      <fieldset className="modo">
-        <legend>Como prefere seguir?</legend>
-        <label className={!completo ? "sel" : ""}>
-          <input type="radio" checked={!completo} onChange={() => setCompleto(false)} />
-          <span><strong>Contratação rápida</strong><small>Só o necessário para cotar</small></span>
-        </label>
-        <label className={completo ? "sel" : ""}>
-          <input type="radio" checked={completo} onChange={() => setCompleto(true)} />
-          <span><strong>Valor mais preciso</strong><small>Até 2 perguntas opcionais a mais</small></span>
-        </label>
-      </fieldset>
-
-      <button className="btn primario largo" onClick={onComecar}>Começar</button>
+      <button className="btn primario largo" onClick={onComecar}>{decisao === 0 ? "Confirmar dados" : "Começar"}</button>
     </div>
   );
 }
@@ -210,7 +249,7 @@ function Inicio({ e, completo, setCompleto, onComecar }) {
 const Pergunta = (props) =>
   PERGUNTAS_FAIXA.has(props.passo.p.id) ? <PerguntaFaixa {...props} /> : <PerguntaOpcoes {...props} />;
 
-function PerguntaOpcoes({ e, passo, completo, onResponder, onPular, onVoltar }) {
+function PerguntaOpcoes({ e, passo, onResponder, onPular, onVoltar }) {
   const { p, nivel } = passo;
   const opcoes = p.opcoes(e);
   const sug = sugestaoDe(p, e);
@@ -220,7 +259,7 @@ function PerguntaOpcoes({ e, passo, completo, onResponder, onPular, onVoltar }) 
 
   const feitas = e.respondidas.length + (e.declaracao ? 1 : 0);
   const restantes = decisoes(e).length + (e.declaracao ? 0 : 1)
-    + (completo && nivel === 3 ? 1 : 0);
+    + (nivel === 3 ? 1 : 0);
   const total = Math.max(feitas + restantes, feitas + 1);
 
   return (
@@ -391,19 +430,35 @@ function Calculadora({ onUsar }) {
 }
 
 // Aba de outro plano: o que ele muda em relação ao recomendado e a aderência dele.
-function comparar(ver, recomendado, av) {
+// O que muda num plano alternativo em relação ao recomendado.
+function diferenca(ver, recomendado) {
   const nomes = (ids) => ids.map((c) => COBERTURAS[c].toLowerCase()).join(", ");
   const maior = ORDEM.indexOf(ver) > ORDEM.indexOf(recomendado);
   const dif = maior ? PLANOS[ver].coberturas.filter((c) => !PLANOS[recomendado].coberturas.includes(c))
     : PLANOS[recomendado].coberturas.filter((c) => !PLANOS[ver].coberturas.includes(c));
-  return `O ${PLANOS[ver].nome} tem ${av.aderencia[ver]}% de aderência ao seu perfil. ` +
-    (maior ? `Acrescenta ${nomes(dif)}.` : `Fica sem ${nomes(dif)}.`);
+  return maior ? `Acrescenta ${nomes(dif)}.` : `Fica sem ${nomes(dif)}.`;
 }
 
-// Uma cobertura na tela final: só nome e valor (o sugerido, já preenchido). "Personalizar" abre o ajuste
-// dentro da faixa da cobertura (botões, campo ou barra, no passo dela); em incêndio, avisa do rateio.
-function CoberturaValor({ c, valor, onChange, extra }) {
+const qtd = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+
+// Grupo recolhido na tela final (coberturas, assistências): o título mostra o resumo; clicar abre o conteúdo.
+function Grupo({ titulo, resumo, children }) {
   const [aberto, setAberto] = useState(false);
+  return (
+    <section className="grupo">
+      <button className="grupo-topo" aria-expanded={aberto} onClick={() => setAberto((a) => !a)}>
+        <span className="grupo-titulo">{titulo}</span>
+        <span className="grupo-resumo">{resumo}</span>
+        <span className="grupo-seta" aria-hidden>{aberto ? "▴" : "▾"}</span>
+      </button>
+      {aberto && <div className="grupo-corpo">{children}</div>}
+    </section>
+  );
+}
+
+// Uma cobertura: nome e valor (o sugerido, já preenchido). Em "Personalizar coberturas", mostra o ajuste
+// dentro da faixa da cobertura (botões ou barra, no passo dela); em incêndio, avisa do rateio.
+function CoberturaValor({ c, valor, onChange, extra, editando }) {
   const { faixa_valor_min: min, faixa_valor_max: max, passo_seletor: passo, valor_sugerido: sug } = c;
   const nome = COBERTURAS[c.cobertura];
   const ajustar = (v) => onChange(Math.min(Math.max(min, Math.round(v / passo) * passo), max));
@@ -414,11 +469,8 @@ function CoberturaValor({ c, valor, onChange, extra }) {
       <div className="cob-linha">
         <span className="cob-nome">{nome}</span>
         <strong className="cob-total">{brl(valor)}</strong>
-        <button className="link" aria-expanded={aberto} onClick={() => setAberto((a) => !a)}>
-          {aberto ? "Fechar" : "Personalizar"}
-        </button>
       </div>
-      {aberto && (
+      {editando && (
         <div className="cob-ajuste">
           <div className="cob-valor">
             <button aria-label={`Diminuir ${nome}`} disabled={valor <= min} onClick={() => ajustar(valor - passo)}>−</button>
@@ -499,17 +551,18 @@ function Declaracao({ e, itens, estimativas, respostas, setRespostas, onEditar, 
   );
 }
 
-function Resultado({ e, completo, onVoltar, onReiniciar }) {
+function Resultado({ e, inicial, onVoltar, onReiniciar, onContratar, onEspecialista }) {
   const [, motivo] = elegibilidade(e);
-  const [acaoBussola, destino] = acao(e, completo);
-  // plano pelo score de aderência; as abas mostram a % de cada plano
+  const [acaoBussola, destino] = acao(e);
+  // plano pelo score de aderência: o recomendado em destaque, os outros dois lado a lado abaixo
   const av = avaliacaoPlano(e);
   const recomendado = av.plano;
-  const [ver, setVer] = useState(recomendado);
+  const [ver, setVer] = useState(inicial?.plano ?? recomendado);
   const pend = pendencias(e);
   // valor de cada cobertura: começa no sugerido pelo cálculo e o cliente pode personalizar dentro da faixa
   const cobs = useMemo(() => coberturas(e), [e]);
-  const [valores, setValores] = useState({});
+  const [valores, setValores] = useState(inicial?.valores ?? {});
+  const [personalizando, setPersonalizando] = useState(false);
 
   // B10: o atendimento recebe motivo, dados com origem e respostas, para não repetir a entrevista.
   const repasse = <p className="nota">O atendimento recebe o motivo, os dados com origem e confiança e {e.revisao === 1 ? "a resposta" : `as ${e.revisao} respostas`} que você já deu.</p>;
@@ -538,17 +591,20 @@ function Resultado({ e, completo, onVoltar, onReiniciar }) {
         {repasse}
         <div className="acoes">
           <button className="btn secundario" onClick={onVoltar}>Revisar respostas</button>
-          <button className="btn primario">Falar com especialista</button>
+          <button className="btn primario" onClick={onEspecialista}>Falar com especialista</button>
         </div>
       </div>
     );
   }
 
   const pl = PLANOS[ver];
+  const listaCobs = cobs.filter((c) => pl.coberturas.includes(c.cobertura));
+  const personalizadas = listaCobs.filter((c) => valores[c.cobertura] !== undefined && valores[c.cobertura] !== c.valor_sugerido).length;
+  const rec = PLANOS[recomendado];
   return (
     <div className="cartao">
-      <p className="sobretitulo">{acaoBussola === "RESULTADO_PRELIMINAR" ? "Resultado preliminar" : "Recomendação para você"}</p>
-      <h1>Plano {PLANOS[recomendado].nome}</h1>
+      <p className="sobretitulo">{acaoBussola === "RESULTADO_PRELIMINAR" ? "Resultado preliminar" : "Sua análise está pronta"}</p>
+      <h1>O plano que mais combina com o seu imóvel</h1>
       {acaoBussola === "RESULTADO_PRELIMINAR" && (
         <div className="aviso">
           <strong>Antes de contratar, falta confirmar:</strong>
@@ -557,50 +613,406 @@ function Resultado({ e, completo, onVoltar, onReiniciar }) {
         </div>
       )}
 
-      <div className="planos" role="tablist">
-        {ORDEM.map((k) => (
-          <button key={k} role="tab" aria-selected={ver === k}
-            className={`plano-tab ${ver === k ? "sel" : ""}`} onClick={() => setVer(k)}>
-            {PLANOS[k].nome}
-            <span className="plano-pct">{av.aderencia[k]}%</span>
-            {k === recomendado && <small>Recomendado</small>}
+      <section className="vitrine" aria-label="Planos">
+        <article className={`plano-destaque ${ver === recomendado ? "sel" : ""}`}>
+          <span className="selo-destaque">Mais indicado para você</span>
+          <p className="plano-rotulo">Plano</p>
+          <h2 className="plano-nome">{rec.nome}</h2>
+          <div className="aderencia">
+            <strong>{av.aderencia[recomendado]}%</strong>
+            <span>de aderência ao seu perfil</span>
+          </div>
+          <div className="aderencia-barra" aria-hidden><div style={{ width: `${av.aderencia[recomendado]}%` }} /></div>
+          {/* a 1ª justificativa do score repete a aderência, já mostrada em destaque acima */}
+          <ul className="plano-porque">{av.justificativas.slice(1).map((t) => <li key={t}>{t}</li>)}</ul>
+          <p className="plano-inclui">
+            {qtd(rec.coberturas.length, "cobertura", "coberturas")} · {qtd(rec.assistencias.length, "pacote", "pacotes")} de assistência
+          </p>
+          {ver !== recomendado && (
+            <button className="btn amarelo" onClick={() => setVer(recomendado)}>Ver detalhes do {rec.nome}</button>
+          )}
+        </article>
+
+        <div className="plano-outros">
+          {ORDEM.filter((k) => k !== recomendado).map((k) => (
+            <button key={k} className={`plano-alt ${ver === k ? "sel" : ""}`} aria-pressed={ver === k} onClick={() => setVer(k)}>
+              <span className="plano-alt-topo">
+                <span className="plano-alt-nome">{PLANOS[k].nome}</span>
+                <span className="plano-alt-pct">{av.aderencia[k]}%</span>
+              </span>
+              <span className="aderencia-barra fina" aria-hidden><span style={{ width: `${av.aderencia[k]}%` }} /></span>
+              <span className="plano-alt-dif">{diferenca(k, recomendado)}</span>
+              <span className="plano-alt-acao">{ver === k ? "Mostrando os detalhes abaixo" : "Comparar este plano"}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <h3 className="detalhe-titulo">O que o plano {pl.nome} inclui</h3>
+      <Grupo titulo="Coberturas" resumo={`${listaCobs.length} incluídas`}>
+        <ul className="cob-lista">
+          {listaCobs.map((c) => (
+            <CoberturaValor key={c.cobertura} c={c} editando={personalizando}
+              extra={!PLANOS[recomendado].coberturas.includes(c.cobertura)}
+              valor={valores[c.cobertura] ?? c.valor_sugerido}
+              onChange={(v) => setValores((x) => ({ ...x, [c.cobertura]: v }))} />
+          ))}
+        </ul>
+        <p className="nota">Valores sugeridos com os dados do seu imóvel.</p>
+        <div className="grupo-acoes">
+          {personalizadas > 0 && (
+            <button className="btn texto" onClick={() => setValores({})}>Voltar aos valores sugeridos</button>
+          )}
+          <button className="btn secundario" aria-pressed={personalizando} onClick={() => setPersonalizando((x) => !x)}>
+            {personalizando ? "Concluir personalização" : "Personalizar coberturas"}
           </button>
-        ))}
-      </div>
-
-      {ver === recomendado ? (
-        <div className="porque">
-          <h3>Por que este plano</h3>
-          <ul>{av.justificativas.map((t) => <li key={t}>{t}</li>)}</ul>
         </div>
-      ) : (
-        <div className="porque neutro">
-          <p>{comparar(ver, recomendado, av)}</p>
-        </div>
-      )}
+      </Grupo>
 
-      <h3>Valor de cada cobertura do {pl.nome} ({pl.coberturas.length})</h3>
-      <p className="sub">Valores sugeridos com os dados do seu imóvel.</p>
-      <ul className="cob-lista">
-        {cobs.filter((c) => pl.coberturas.includes(c.cobertura)).map((c) => (
-          <CoberturaValor key={c.cobertura} c={c} extra={!PLANOS[recomendado].coberturas.includes(c.cobertura)}
-            valor={valores[c.cobertura] ?? c.valor_sugerido}
-            onChange={(v) => setValores((x) => ({ ...x, [c.cobertura]: v }))} />
-        ))}
-      </ul>
-      <p className="assistencia"><strong>Assistências:</strong> {pl.assistencia}</p>
+      <Grupo titulo="Assistências" resumo={`${pl.assistencias.length} ${pl.assistencias.length === 1 ? "pacote" : "pacotes"}`}>
+        <ul className="ass-lista">
+          {pl.assistencias.map((k) => (
+            <li key={k}><strong>{ASSISTENCIAS[k][0]}</strong><span>{ASSISTENCIAS[k][1]}</span></li>
+          ))}
+        </ul>
+        <p className="nota">Assistências acompanham o plano e não são personalizáveis. Limites e quantidades conforme os manuais oficiais.</p>
+      </Grupo>
       {observacoes(e).map((o) => <p key={o} className="assistencia"><strong>Atenção:</strong> {o}</p>)}
 
       <div className="numeros">
         <div><small>Confiança dos dados</small><strong>{confiancaGeral(e)}%</strong></div>
-        <div><small>Coberturas personalizadas</small><strong>{pl.coberturas.filter((k) => valores[k] !== undefined && valores[k] !== cobs.find((c) => c.cobertura === k)?.valor_sugerido).length} de {pl.coberturas.length}</strong></div>
+        <div><small>Coberturas personalizadas</small><strong>{personalizadas} de {pl.coberturas.length}</strong></div>
       </div>
-      <p className="nota">Valores calculados com premissas do time, a validar com a BB Seguros. Plano por regra provisória até o motor de score.</p>
+      <p className="nota">Valores e pesos do score calculados com premissas do time, a validar com a BB Seguros.</p>
 
       <div className="acoes">
         <button className="btn secundario" onClick={onVoltar}>Voltar</button>
         <button className="btn texto" onClick={onReiniciar}>Recomeçar</button>
-        <button className="btn primario">{acaoBussola === "RESULTADO_PRELIMINAR" ? "Concluir com um gerente" : `Contratar ${pl.nome}`}</button>
+        <button className="btn primario" onClick={() => onContratar(ver, valores)}>
+          {acaoBussola === "RESULTADO_PRELIMINAR" ? `Ver valor do ${pl.nome}` : `Contratar ${pl.nome}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Página de valor: parcela e total anual estimados para o plano e os valores de cobertura escolhidos.
+// O cálculo (preco.js) usa premissas do time, não a tarifa da BB Seguros.
+function Valor({ e, escolha, onVoltar }) {
+  const { plano, valores } = escolha;
+  const pl = PLANOS[plano];
+  const preliminar = acao(e)[0] === "RESULTADO_PRELIMINAR";
+  const cobs = useMemo(() => coberturas(e), [e]);
+  const p = useMemo(() => precoPlano(e, plano, cobs, valores), [e, plano, cobs, valores]);
+  const [n, setN] = useState(p.parcelas.length);
+  const [enviado, setEnviado] = useState(false);
+  const parcela = p.parcelas[n - 1].valor;
+  const escolhas = [...new Set([1, 3, 6, p.parcelas.length])].filter((x) => x <= p.parcelas.length);
+  const sugerido = (k) => cobs.find((c) => c.cobertura === k).valor_sugerido;
+  const personalizadas = p.linhas.filter((l) => l.valor !== sugerido(l.cobertura)).length;
+  const valorDe = (k) => p.linhas.find((l) => l.cobertura === k)?.valor;
+  const pct = (x) => `${(x * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+  const mult = (x) => `×${String(x).replace(".", ",")}`;
+
+  return (
+    <div className="cartao">
+      <p className="sobretitulo">{preliminar ? "Valor preliminar" : "Valor estimado do seu seguro"}</p>
+      <h1>Plano {pl.nome}</h1>
+      {preliminar && (
+        <div className="aviso">
+          <strong>O valor pode mudar depois da confirmação de:</strong>
+          <ul>{pendencias(e).map((t) => <li key={t}>{t}</li>)}</ul>
+        </div>
+      )}
+
+      <section className="preco-destaque" aria-live="polite">
+        <p className="preco-rotulo">{n === 1 ? "À vista" : `Em ${n}x sem juros`}</p>
+        <p className="preco-valor">{n === 1 ? "" : `${n}x de `}<strong>{reais(parcela)}</strong></p>
+        <p className="preco-total">Total de {reais(p.total)} por 12 meses de proteção, com IOF</p>
+        <div className="parcelas" role="radiogroup" aria-label="Número de parcelas">
+          {escolhas.map((x) => (
+            <button key={x} role="radio" aria-checked={n === x} className={n === x ? "sel" : ""} onClick={() => setN(x)}>
+              {x === 1 ? "À vista" : `${x}x`}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div className="numeros">
+        <div><small>Proteção do imóvel (incêndio)</small><strong>{brl(valorDe("INCENDIO_RAIO_EXPLOSAO_FUMACA"))}</strong></div>
+        {valorDe("ROUBO_FURTO_ARROMBAMENTO") !== undefined
+          ? <div><small>Seus bens contra roubo</small><strong>{brl(valorDe("ROUBO_FURTO_ARROMBAMENTO"))}</strong></div>
+          : <div><small>Danos elétricos</small><strong>{brl(valorDe("DANOS_ELETRICOS"))}</strong></div>}
+        <div>
+          <small>Coberturas</small><strong>{p.linhas.length}</strong>
+          {personalizadas > 0 && <small className="numeros-extra">{qtd(personalizadas, "personalizada", "personalizadas")} por você</small>}
+        </div>
+        <div><small>Assistências</small><strong>{qtd(p.assistencias.length, "pacote", "pacotes")}</strong></div>
+      </div>
+
+      <Grupo titulo="Como chegamos a esse valor" resumo={`${reais(p.total)} por ano`}>
+        <table className="calculo">
+          <thead><tr><th>Cobertura</th><th>Valor coberto</th><th>Por ano</th></tr></thead>
+          <tbody>
+            {p.linhas.map((l) => (
+              <tr key={l.cobertura}><td>{COBERTURAS[l.cobertura]}</td><td>{brl(l.valor)}</td><td>{reais(l.premio)}</td></tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr><td colSpan={2}>Soma das coberturas</td><td>{reais(p.somaCoberturas)}</td></tr>
+            {p.fatores.length > 0 && (
+              <tr>
+                <td colSpan={2}>Ajuste do imóvel ({p.fatores.map((f) => `${f.rotulo} ${mult(f.mult)}`).join(", ")})</td>
+                <td>{p.ajusteFatores < 0 ? "−" : "+"}{reais(Math.abs(p.ajusteFatores))}</td>
+              </tr>
+            )}
+            <tr><td colSpan={2}>Assistências ({qtd(p.assistencias.length, "pacote", "pacotes")})</td><td>{reais(p.somaAssistencias)}</td></tr>
+            <tr><td colSpan={2}>IOF ({pct(PREMISSAS_PRECO.iof)})</td><td>{reais(p.iof)}</td></tr>
+            <tr className="calculo-total"><td colSpan={2}>Total por ano</td><td>{reais(p.total)}</td></tr>
+          </tfoot>
+        </table>
+        <p className="nota">
+          Cada cobertura custa uma taxa anual sobre o valor coberto. Parcelamento em até {PREMISSAS_PRECO.parcelas_max}x
+          sem juros, com parcela mínima de {reais(PREMISSAS_PRECO.parcela_minima)}.
+        </p>
+      </Grupo>
+
+      <p className="nota">
+        Estimativa ilustrativa do Time Vector: taxas, fatores e custos de assistência são premissas de mercado,
+        não a tarifa da BB Seguros (que não é pública). O valor final vem da cotação oficial.
+      </p>
+
+      {enviado && (
+        <div className="sucesso" role="status">
+          <strong>{preliminar ? "Pedido enviado a um gerente." : "Proposta pronta para pagamento."}</strong>{" "}
+          {preliminar
+            ? "Ele confirma as pendências e conclui a contratação com você."
+            : "Neste protótipo a jornada termina aqui; o pagamento seguiria no app ou no site do BB."}
+        </div>
+      )}
+      <div className="acoes">
+        <button className="btn secundario" onClick={onVoltar}>Voltar ao plano</button>
+        <button className="btn primario" disabled={enviado} onClick={() => setEnviado(true)}>
+          {preliminar ? "Enviar para um gerente" : n === 1 ? `Contratar por ${reais(parcela)}` : `Contratar em ${n}x de ${reais(parcela)}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Tela do Especialista (simulação): o que o atendimento recebe quando a Bússola encaminha o caso (B10).
+// Mostra o que travou o fluxo, todas as regras, os dados do imóvel com origem, os sinais do cadastro
+// e as respostas do cliente, para o especialista não repetir a entrevista.
+// --------------------------------------------------------------------------
+const ROTULO_REGRA = {
+  e1_material: ["E1", "Material das paredes externas"], e2_obra: ["E2", "Obra ou reforma"],
+  e3_seguro: ["E3", "Seguro BB no endereço"], e4_rural: ["E4", "Atividade rural"],
+  e5_situacao: ["E5", "Tombado, desapropriado ou condenado"], e6_comercial: ["E6", "Atividade comercial"],
+  e7_territorial: ["E7", "Favela ou comunidade urbana"], enq_vinculo: ["Vínculo", "Enquadramento do vínculo"],
+};
+// de onde vem cada regra: um campo do imóvel ou um item da declaração final
+const CAMPO_REGRA = {
+  e1_material: "material", e2_obra: "obra", e3_seguro: "seguro_bb", enq_vinculo: "vinculo",
+  e4_rural: "rural", e5_situacao: "tombado", e6_comercial: "comercial", e7_territorial: "comunidade",
+};
+const SITUACAO = {
+  [SEM]: { rotulo: "Sem restrição", classe: "ok" },
+  [PEND]: { rotulo: "Pendente", classe: "est" },
+  [REST]: { rotulo: "Restrição", classe: "falta" },
+};
+const RESPOSTA_DECLARACAO = Object.fromEntries(RESPOSTAS_DECLARACAO);
+const DECISOES_ESPECIALISTA = ["Aceitar e liberar a contratação", "Pedir documentos ou vistoria", "Não aceitar e indicar outro produto"];
+
+// Reconstrói, pelo histórico de estados, cada pergunta feita e a opção que o cliente escolheu.
+function respostasDoCliente(historico, respDeclaracao) {
+  const out = [];
+  for (let i = 1; i < historico.length; i++) {
+    const antes = historico[i - 1], depois = historico[i];
+    if (!antes.declaracao && depois.declaracao) {
+      for (const [campo, frase] of itensDeclaracao(antes))
+        out.push({ chave: `declaracao-${campo}`, campo, texto: frase, declaracao: true,
+          resposta: RESPOSTA_DECLARACAO[respDeclaracao[campo] ?? CONFIRMO] });
+      continue;
+    }
+    for (const id of depois.respondidas.filter((x) => !antes.respondidas.includes(x))) {
+      const p = POR_ID[id], alvo = JSON.stringify(depois.f[p.campo]);
+      const op = p.opcoes(antes).find((_, k) => JSON.stringify(responder(antes, p, k, 2).f[p.campo]) === alvo);
+      const mudou = JSON.stringify(antes.f[p.campo]) !== alvo;
+      out.push({ chave: `${id}-${i}`, campo: p.campo, texto: p.texto(antes),
+        resposta: op?.rotulo ?? (mudou ? valorTexto(p.campo, depois.f[p.campo]) : "Pulou a pergunta") });
+    }
+  }
+  return out;
+}
+
+// O que disparou a regra: a última resposta do cliente sobre aquele ponto ou, sem resposta, o dado de origem.
+function gatilho(regra, e, respostas) {
+  const campo = CAMPO_REGRA[regra];
+  const r = [...respostas].reverse().find((x) => x.campo === campo);
+  if (r) return `${r.declaracao ? "Na declaração final" : "Na pergunta"} “${r.texto}”, o cliente respondeu: ${r.resposta}.`;
+  const c = e.f[campo];
+  if (!c) return "";
+  return `${CAMPOS[campo]}: ${valorTexto(campo, c)} (${ORIGEM[c.origem].rotulo.toLowerCase()}${c.nota ? `: ${c.nota}` : ""}).`;
+}
+
+function sinaisDoCliente(c) {
+  const sn = (x) => (x === "SIM" ? "Sim" : "Não");
+  return [
+    ["Este é o endereço principal", c.principal ? "Sim" : "Não"],
+    ...(c.outro_endereco ? [["Outro endereço cadastrado", c.outro_endereco]] : []),
+    ["Aluguel pago todo mês", c.pagamento_aluguel_recorrente === "SIM" ? `${brl(c.valor_aluguel_recorrente)}/mês` : "Não identificado"],
+    ["Crédito compatível com aluguel recebido",
+      c.credito_recorrente_compativel_aluguel === "SIM" ? `${brl(c.valor_medio_credito_recorrente)}/mês` : "Não identificado"],
+    ["Parcela de financiamento imobiliário",
+      c.parcela_financiamento_imobiliario > 0 ? `${brl(c.parcela_financiamento_imobiliario)}/mês` : "Não identificada"],
+    ["Compras de material de construção (24 meses)", brl(c.gastos_material_construcao_24m)],
+    ["Compras em vidraçaria (24 meses)", brl(c.gastos_vidracaria_24m)],
+    ["Já tem seguro residencial BB", sn(c.possui_seguro_residencial)],
+    ["Dependentes", String(c.quantidade_dependentes)],
+    ["Pet informado", sn(c.possui_pet_informado)],
+    ["Área no cadastro", c.area_cadastrada_m2 > 0 ? `${c.area_cadastrada_m2} m²` : "Não cadastrada"],
+    ["Área estimada pelo modelo", `${Math.round(c.area_est_m2)} m² (${Math.round(c.area_est_min_m2)} a ${Math.round(c.area_est_max_m2)} m²)`],
+    ["Bens estimados", `${brl(c.bens_est)} (${brl(c.bens_est_min)} a ${brl(c.bens_est_max)})`],
+  ];
+}
+
+function Especialista({ e, historico, respDeclaracao, onVoltar }) {
+  const c = e.caso;
+  const [, destino] = acao(e);
+  const r = regras(e);
+  const respostas = useMemo(() => respostasDoCliente(historico, respDeclaracao), [historico, respDeclaracao]);
+  const travas = Object.entries(r).filter(([, [s]]) => s === REST);
+  const pend = Object.entries(r).filter(([, [s]]) => s === PEND);
+  const av = avaliacaoPlano(e);
+  const incendio = coberturas(e).find((x) => x.cobertura === "INCENDIO_RAIO_EXPLOSAO_FUMACA").valor_sugerido;
+  const [abertoEm] = useState(() => new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }));
+  const [parecer, setParecer] = useState("");
+  const [decisao, setDecisao] = useState(null);
+
+  return (
+    <div className="cartao esp">
+      <header className="esp-topo">
+        <div>
+          <p className="esp-sobre">Simulação · uso interno BB Seguros</p>
+          <h1>Tela do Especialista</h1>
+        </div>
+        <dl className="esp-protocolo">
+          <div><dt>Protocolo</dt><dd>ATD-{c.imovel_id.replace("IMO_CASO_", "")}</dd></div>
+          <div><dt>Aberto em</dt><dd>{abertoEm}</dd></div>
+          <div><dt>Fila</dt><dd>{destino}</dd></div>
+        </dl>
+      </header>
+
+      <section className="esp-cliente">
+        <strong>{c.nome}</strong>
+        <span>Cliente {c.cliente_id} · Imóvel {c.imovel_id} · {c.uf}</span>
+        <span>{c.endereco_txt}</span>
+      </section>
+
+      <section className="esp-trava" aria-labelledby="esp-trava-titulo">
+        <h2 id="esp-trava-titulo">O que travou o fluxo</h2>
+        {travas.map(([k, [, motivo, dest]]) => (
+          <article key={k}>
+            <span className="esp-regra">{ROTULO_REGRA[k][0]}</span>
+            <div>
+              <strong>{ROTULO_REGRA[k][1]}</strong>
+              <p>{motivo[0].toUpperCase() + motivo.slice(1)}.</p>
+              <p className="esp-gatilho">{gatilho(k, e, respostas)}</p>
+              <small>Encaminhamento: {dest}</small>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      {pend.length > 0 && (
+        <section className="esp-pend">
+          <h3>Também a confirmar</h3>
+          <ul>{pend.map(([k, [, m]]) => <li key={k}><b>{ROTULO_REGRA[k][0]}</b> {m}</li>)}</ul>
+        </section>
+      )}
+
+      <div className="esp-grade">
+        <section className="esp-bloco">
+          <h3>Dados do imóvel</h3>
+          <table className="esp-tabela">
+            <thead><tr><th>Campo</th><th>Valor</th><th>Origem</th></tr></thead>
+            <tbody>
+              {Object.entries(e.f).map(([k, x]) => (
+                <tr key={k}>
+                  <td>{CAMPOS[k] ?? k}</td>
+                  <td><strong>{valorTexto(k, x)}</strong>{x.nota && <small>{x.nota}</small>}</td>
+                  <td><span className={`chip ${ORIGEM[x.origem].classe}`}>{ORIGEM[x.origem].rotulo}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section className="esp-bloco">
+          <h3>Sinais nos dados do cliente</h3>
+          <table className="esp-tabela">
+            <tbody>
+              {sinaisDoCliente(c).map(([rot, val]) => <tr key={rot}><td>{rot}</td><td><strong>{val}</strong></td></tr>)}
+            </tbody>
+          </table>
+        </section>
+
+        <section className="esp-bloco">
+          <h3>Regras de elegibilidade</h3>
+          <table className="esp-tabela">
+            <tbody>
+              {Object.entries(r).map(([k, [s, m]]) => (
+                <tr key={k}>
+                  <td><b>{ROTULO_REGRA[k][0]}</b> {ROTULO_REGRA[k][1]}{m && <small>{m}</small>}</td>
+                  <td><span className={`chip ${SITUACAO[s].classe}`}>{SITUACAO[s].rotulo}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section className="esp-bloco">
+          <h3>Respostas do cliente</h3>
+          {respostas.length === 0
+            ? <p className="nota">O cliente não respondeu perguntas: o caso travou só com os dados.</p>
+            : (
+              <ol className="esp-respostas">
+                {respostas.map((x) => <li key={x.chave}><span>{x.texto}</span><strong>{x.resposta}</strong></li>)}
+              </ol>
+            )}
+        </section>
+
+        <section className="esp-bloco">
+          <h3>Se o caso for aceito</h3>
+          <table className="esp-tabela">
+            <tbody>
+              <tr><td>Plano indicado pelo score</td><td><strong>{PLANOS[av.plano].nome} ({av.aderencia[av.plano]}% de aderência)</strong></td></tr>
+              <tr><td>Proteção do imóvel sugerida (incêndio)</td><td><strong>{brl(incendio)}</strong></td></tr>
+              <tr><td>Confiança dos dados</td><td><strong>{confiancaGeral(e)}%</strong></td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <section className="esp-bloco esp-parecer">
+        <h3>Parecer do especialista</h3>
+        <textarea rows={3} value={parecer} onChange={(ev) => setParecer(ev.target.value)} aria-label="Parecer do especialista"
+          placeholder="Ex.: obra só na área externa, término previsto em 30 dias; aceitar após vistoria." />
+        <div className="esp-decisoes">
+          {DECISOES_ESPECIALISTA.map((d, i) => (
+            <button key={d} className={`btn ${i === 0 ? "primario" : "secundario"}`} onClick={() => setDecisao(d)}>{d}</button>
+          ))}
+        </div>
+        {decisao && (
+          <div className="sucesso" role="status">
+            <strong>Parecer registrado (simulação):</strong> {decisao}{parecer.trim() && ` · “${parecer.trim()}”`}
+          </div>
+        )}
+      </section>
+
+      <div className="acoes">
+        <button className="btn secundario" onClick={onVoltar}>Voltar à tela do cliente</button>
       </div>
     </div>
   );
@@ -626,29 +1038,5 @@ function Progresso({ atual, total }) {
       <div className="barra"><div style={{ width: `${(100 * atual) / total}%` }} /></div>
       <small>Etapa {atual} de {total}</small>
     </div>
-  );
-}
-
-// Sem plano aqui: o cliente só conhece o plano no Resultado, depois da análise completa.
-function Painel({ e }) {
-  const conf = confiancaGeral(e);
-  const campos = camposVisiveis(e).map(([, c]) => c);
-  const sabidos = campos.filter((c) => c.confianca === "alta").length;
-  return (
-    <aside className="painel" aria-live="polite">
-      <h3>Seu imóvel até agora</h3>
-      <div className="painel-plano" key={sabidos}>
-        <small>Informações confirmadas</small>
-        <strong>{sabidos} de {campos.length}</strong>
-      </div>
-      <div className="medidor">
-        <small>Confiança dos dados · {conf}%</small>
-        <div className="barra"><div style={{ width: `${conf}%` }} /></div>
-      </div>
-      <ul className="lista-campos compacta">
-        {camposVisiveis(e).map(([k, c]) => <LinhaCampo key={k} campo={k} c={c} />)}
-      </ul>
-      <p className="nota">Atualizado a cada resposta.</p>
-    </aside>
   );
 }
