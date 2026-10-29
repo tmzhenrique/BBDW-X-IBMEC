@@ -1,0 +1,76 @@
+{
+ "versao": "1.1.0-vector.1",
+ "descricao": "Score por utilidade marginal: o Essencial vale 'base'; cada cobertura opcional incluída soma pontos_por_necessidade × (necessidade − limiar). Só compensa incluir quando a necessidade passa do limiar. Empate → plano mais simples. Pesos e limiares são premissa do time.",
+ "empate_pontos": 3,
+ "adicional_incluir_se_necessidade_min": 0.7,
+ "adicional_excluir_se_necessidade_max": 0.25,
+ "planos": {
+  "ESSENCIAL": [],
+  "PRATICO": [
+   "ROUBO_FURTO_ARROMBAMENTO",
+   "QUEBRA_DE_VIDROS"
+  ],
+  "TOTAL": [
+   "ROUBO_FURTO_ARROMBAMENTO",
+   "QUEBRA_DE_VIDROS",
+   "RESPONSABILIDADE_CIVIL_FAMILIAR",
+   "PERDA_PAGAMENTO_ALUGUEL",
+   "DESPESAS_EMERGENCIAIS"
+  ]
+ },
+ "necessidade": {
+  "ROUBO_FURTO_ARROMBAMENTO": {
+   "faixas_valor_bens_portateis": [
+    [
+     10000,
+     0.3
+    ],
+    [
+     25000,
+     0.6
+    ],
+    [
+     999999999,
+     0.9
+    ]
+   ],
+   "bonus_imovel_vazio": 0.3,
+   "locador": 0.1
+  },
+  "QUEBRA_DE_VIDROS": {
+   "com_gasto_vidracaria": 0.8,
+   "sem_evidencia": 0.3
+  },
+  "RESPONSABILIDADE_CIVIL_FAMILIAR": {
+   "base": 0.2,
+   "por_dependente": 0.25,
+   "max_dependentes": 3,
+   "pet": 0.3
+  },
+  "PERDA_PAGAMENTO_ALUGUEL": {
+   "INQUILINO": 0.9,
+   "PROPRIO_ALUGADO_TERCEIROS": 0.8,
+   "bonus_vive_do_aluguel": 0.0,
+   "limiar_vive_do_aluguel": 0.5,
+   "PROPRIO_FINANCIADO": 0.5,
+   "MORADOR": 0.3,
+   "observacao_vive_do_aluguel": "desativado: usava renda informada ou presumida; o guia proíbe atributos pessoais como atalho para escolher o plano",
+   "DESOCUPADO": 0.0,
+   "observacao_desocupado": "a cobertura não vale para imóvel desocupado"
+  },
+  "DESPESAS_EMERGENCIAIS": {
+   "base": 0.3,
+   "financiado": 0.3,
+   "limiar_valor_em_risco": 500000,
+   "bonus_valor_em_risco": 0.2
+  },
+  "prioridade_declarada": 1.0
+ },
+ "base": 50,
+ "limiar_necessidade": 0.5,
+ "pontos_por_necessidade": 50,
+ "necessidade_critica_piso": 0.8,
+ "observacao_piso": "necessidade >= este valor obriga o plano mínimo que tem a cobertura (planos fixos: em vez de adicional avulso, sobe o plano)",
+ "peso_necessidade_critica": 4,
+ "observacao_peso": "necessidade crítica (>= necessidade_critica_piso) pesa este fator no score e na aderência: o plano que a cobre ganha e a % conta a mesma história do plano mínimo"
+}

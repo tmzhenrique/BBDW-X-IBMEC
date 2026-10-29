@@ -1,0 +1,11 @@
+uf,cub_r8n_m2,referencia,fonte,url,data_acesso,observacao
+SP,2238.58,2026-09,Sinduscon-SP (via MySide),https://myside.com.br/guia-imoveis/cub-sp,2026-10-28,
+DF,2416.71,2026-09,Sinduscon-DF (via MySide),https://myside.com.br/guia-imoveis/cub-df,2026-10-28,
+RJ,2476.31,2026-09,Sinduscon-Rio (via MySide),https://myside.com.br/guia-imoveis/cub-rj,2026-10-28,
+PR,2738.93,2026-09,Sinduscon-PR,https://sindusconpr.com.br/serie-historica-cub-pr-r8n-382-p,2026-10-28,pagina da serie R8-N; confirmar categoria na tabela oficial
+MG,2561.78,2026-09,Sinduscon-MG (via MySide),https://myside.com.br/guia-imoveis/cub-mg,2026-10-28,
+GO,2477.01,2026-09,Media das outras 9 UFs (proxy),,2026-10-28,R8-N de GO nao encontrado (so R16-A = 2858.23); substituir pelo valor oficial do Sinduscon-GO
+BA,2218.68,2026-08,Sinduscon-BA (via MySide),https://myside.com.br/guia-imoveis/cub-ba,2026-10-28,
+PE,2240.23,2026-09,Sinduscon-PE (via MySide),https://myside.com.br/guia-imoveis/cub-pe,2026-10-28,
+CE,2458.13,2026-08,Sinduscon-CE (via MySide),https://myside.com.br/guia-imoveis/cub-ce,2026-10-28,
+RS,2943.73,2026-09,Sinduscon-RS (via MySide),https://myside.com.br/guia-imoveis/cub-rs,2026-10-28,

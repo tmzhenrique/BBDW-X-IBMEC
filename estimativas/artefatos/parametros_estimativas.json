@@ -1,0 +1,22 @@
+{
+  "iptu_m2_mediana_cidade": {
+    "Belo Horizonte": 12.0,
+    "Brasilia": 15.23,
+    "Curitiba": 13.86,
+    "Fortaleza": 10.0,
+    "Goiania": 10.93,
+    "Porto Alegre": 14.08,
+    "Recife": 11.37,
+    "Rio de Janeiro": 16.67,
+    "Salvador": 10.62,
+    "Sao Paulo": 18.46
+  },
+  "iptu_m2_mediana_global": 14.02,
+  "aluguel_m2_quartis": [
+    9.49,
+    18.77,
+    25.55
+  ],
+  "n_imoveis_com_area": 1062,
+  "n_inquilinos_com_area": 220
+}

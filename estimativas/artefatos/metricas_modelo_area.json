@@ -1,0 +1,45 @@
+{
+  "versao": "2.0.0",
+  "fatores_faixa": {
+    "CASA": [
+      0.7980263472426692,
+      1.2515200601026761
+    ],
+    "APARTAMENTO": [
+      0.7955950692514937,
+      1.2390922055914892
+    ]
+  },
+  "avaliacao": {
+    "validacao_cruzada": {
+      "base": "Seguro_Residencial_Desenvolvimento_Consolidado",
+      "n": 1016,
+      "MAE_m2": 19.83,
+      "erro_mediano_pct": 11.51,
+      "R2": 0.886,
+      "pct_ate_15pct_erro": 62.2
+    },
+    "teste_a_parte": {
+      "bases": [
+        "Seguro_Residencial_Teste_Comum_Consolidado"
+      ],
+      "n": 46,
+      "MAE_m2": 19.52,
+      "erro_mediano_pct": 10.41,
+      "R2": 0.882,
+      "pct_ate_15pct_erro": 63.0,
+      "cobertura_faixa_P10_P90_pct": 82.6
+    }
+  },
+  "n_treino": 1062,
+  "ambiente": {
+    "python": "3.14.3",
+    "scikit_learn": "1.9.1"
+  },
+  "seed": 42,
+  "tempo_treino_s": 17.1,
+  "fontes": [
+    "Seguro_Residencial_Desenvolvimento_Consolidado",
+    "Seguro_Residencial_Teste_Comum_Consolidado"
+  ]
+}

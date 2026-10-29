@@ -1,0 +1,183 @@
+{
+  "versao": "1.1.0",
+  "descricao": "Premissas das estimativas (Seguro Residencial). Valores marcados como premissa do time precisam de validação com a BB Seguros.",
+  "dados_externos": {
+    "cub_m2_uf": "dados_externos/cub_m2_uf.csv",
+    "cub_padrao_nacional_m2": 2477.01,
+    "observacao": "UF fora da tabela usa cub_padrao_nacional_m2 (média das UFs disponíveis) com confiança reduzida"
+  },
+  "estimativas": {
+    "fracao_compras_min": 0.5,
+    "padrao_limites_iptu_m2_relativo": [
+      0.8,
+      1.2
+    ],
+    "categorias_bens": {
+      "movel": "obs_compras_moveis_36m",
+      "eletrodomestico": "obs_compras_eletrodomesticos_36m",
+      "eletronico": "obs_compras_eletronicos_36m",
+      "item_lazer": null
+    }
+  },
+  "coberturas": {
+    "fator_padrao": {
+      "ECONOMICO": [
+        0.75,
+        0.9
+      ],
+      "NORMAL": [
+        0.95,
+        1.1
+      ],
+      "SUPERIOR": [
+        1.2,
+        1.5
+      ],
+      "NAO_DISPONIVEL": [
+        0.85,
+        1.25
+      ]
+    },
+    "apto_benfeitorias": [
+      0.1,
+      0.25
+    ],
+    "percentual_incendio": {
+      "DANOS_POR_AGUA": {
+        "CASA": [
+          0.1,
+          0.2
+        ],
+        "APARTAMENTO": [
+          0.1,
+          0.2
+        ],
+        "piso": 5000
+      },
+      "VENDAVAL_GRANIZO": {
+        "CASA": [
+          0.1,
+          0.2
+        ],
+        "APARTAMENTO": [
+          0.05,
+          0.1
+        ],
+        "piso": 3000
+      },
+      "IMPACTO_VEICULOS_TERRESTRES": {
+        "CASA": [
+          0.05,
+          0.1
+        ],
+        "APARTAMENTO": [
+          0.02,
+          0.05
+        ],
+        "piso": 3000
+      },
+      "DESPESAS_EMERGENCIAIS": {
+        "CASA": [
+          0.05,
+          0.1
+        ],
+        "APARTAMENTO": [
+          0.05,
+          0.1
+        ],
+        "piso": 2000,
+        "teto": 30000
+      }
+    },
+    "vidros_base": {
+      "CASA": [
+        3000,
+        8000
+      ],
+      "APARTAMENTO": [
+        2000,
+        5000
+      ]
+    },
+    "vidros_fator_gasto": [
+      0.5,
+      1.2
+    ],
+    "pequenos_reparos": [
+      1000,
+      3000
+    ],
+    "rc_familiar": {
+      "base": [
+        20000,
+        50000
+      ],
+      "por_dependente": [
+        5000,
+        15000
+      ],
+      "pet": [
+        5000,
+        15000
+      ],
+      "teto": 100000
+    },
+    "aluguel_meses": {
+      "INQUILINO": [
+        6,
+        12
+      ],
+      "PROPRIO_ALUGADO_TERCEIROS": [
+        6,
+        12
+      ],
+      "MORADOR_PROPRIETARIO": [
+        3,
+        6
+      ]
+    },
+    "piso_bens": 3000,
+    "roubo_peso_categoria": {
+      "eletronico": 1.0,
+      "item_lazer": 1.0,
+      "eletrodomestico": 0.5,
+      "movel": 0.0
+    },
+    "roubo_observacao": "premissa do time: eletrônicos e itens de lazer são os mais visados; metade dos eletrodomésticos (portáteis); móveis excluídos"
+  },
+  "seletor": {
+    "margem_por_confianca": {
+      "ALTA": [
+        0.15,
+        0.15
+      ],
+      "MEDIA": [
+        0.25,
+        0.25
+      ],
+      "BAIXA": [
+        0.4,
+        0.4
+      ]
+    },
+    "passo": {
+      "limite": 10000,
+      "abaixo": 100,
+      "acima": 1000
+    }
+  },
+  "catalogo": {
+    "INCENDIO_RAIO_EXPLOSAO_FUMACA": "ESSENCIAL",
+    "DANOS_POR_AGUA": "ESSENCIAL",
+    "VENDAVAL_GRANIZO": "ESSENCIAL",
+    "IMPACTO_VEICULOS_TERRESTRES": "ESSENCIAL",
+    "QUEDA_AERONAVE": "ESSENCIAL",
+    "DANOS_ELETRICOS": "ESSENCIAL",
+    "INSTALACOES_PEQUENOS_REPAROS": "ESSENCIAL",
+    "ROUBO_FURTO_ARROMBAMENTO": "PRATICO",
+    "QUEBRA_DE_VIDROS": "PRATICO",
+    "RESPONSABILIDADE_CIVIL_FAMILIAR": "TOTAL",
+    "PERDA_PAGAMENTO_ALUGUEL": "TOTAL",
+    "DESPESAS_EMERGENCIAIS": "TOTAL"
+  }
+}
