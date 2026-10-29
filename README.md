@@ -78,7 +78,7 @@ flowchart LR
 | `coberturas/` | Pacote `motor_coberturas`: faixas das 12 coberturas; fórmulas em `coberturas/docs/CALCULOS_COBERTURAS.md` |
 | `gerar_templates.py` | Preenche `template_resultado_times` e `template_coberturas_times` em lote |
 | `metricas/` | `gerar_metricas.py` e o relatório `RELATORIO_METRICAS.md` (também em PDF); evidências por caso em `metricas/saida/` |
-| `frontend/` | Protótipo React + Vite do formulário adaptativo; `src/engine.js` porta para JS as mesmas regras do motor |
+| `frontend/` | Protótipo React + Vite do formulário adaptativo; `src/engine.js` porta para JS as mesmas regras do motor; `src/preco.js` estima a parcela da página de valor |
 | `exportar_casos_front.py` | Exporta casos reais da base, com as estimativas, para `frontend/src/casos.json` |
 | `dados/consolidado/` | Planilha única de desenvolvimento e de teste |
 | `dados/referencia/` | Catálogo de coberturas e templates vazios do desafio |
@@ -123,6 +123,33 @@ python motor_perguntas.py --base <csv> --interativo <IMOVEL_ID>
 cd frontend && npm install && npm run dev
 ```
 
+No topo, o seletor "Modo apresentação" troca o imóvel da base de teste. As três "Jornadas da apresentação" mostram os caminhos principais: One Click Buy (Mariana), atendimento assistido (Carlos, que responde que a obra está em andamento) e indicação completa (Fernanda). A jornada do cliente segue a barra de etapas:
+
+1. **Seus dados:** o que já sabemos do imóvel, com a origem de cada informação.
+2. **Perguntas:** uma por tela, com a resposta sugerida pelos dados quando existe. Área e bens são confirmados numa barra de faixa.
+3. **Confirmação:** a declaração final (Confirmo / Não é o caso / Não sei).
+4. **Seu plano:** o plano recomendado em destaque, com a aderência e os motivos, e os outros dois lado a lado para comparar. Coberturas e assistências ficam recolhidas; "Personalizar coberturas" ajusta cada valor dentro da faixa.
+5. **Valor:** o botão "Contratar" abre a página de valor (veja abaixo).
+
+**Página de valor.** Mostra a parcela estimada (por exemplo, "10x de R$ 42,61"), o total por 12 meses com IOF e a escolha entre à vista, 3x, 6x e 10x. "Como chegamos a esse valor" abre o cálculo linha a linha:
+- cada cobertura do plano = valor coberto (o sugerido ou o personalizado pelo cliente) × taxa anual da cobertura;
+- ajuste do imóvel: tipo (apartamento ×0,85, casa em condomínio ×0,92), paredes mistas com maioria de alvenaria (×1,15) e uso (alugado ×1,05, temporada ×1,2, desocupado ×1,3);
+- mais o custo anual de cada pacote de assistência do plano e o IOF de seguros de danos (7,38%);
+- parcelamento em até 10x sem juros, com parcela mínima de R$ 25.
+
+A tarifa da BB Seguros não é pública, então taxas, fatores e custos são **premissas do time**, reunidas em `PREMISSAS_PRECO` no início de `frontend/src/preco.js`. Calibramos as taxas para que o Total do imóvel mediano fique perto do "a partir de R$ 62" por mês divulgado para o plano completo. Na base de teste, a mediana anual ficou em R$ 279 no Essencial, R$ 598 no Prático e R$ 767 no Total. Em caso com pendência, a página avisa que o valor pode mudar e o botão final vira "Enviar para um gerente".
+
+**Tela do Especialista.** Quando uma restrição é confirmada, o cliente vê "Vamos seguir com um especialista", e o botão "Falar com especialista" abre uma simulação da tela interna de quem recebe o caso (é o pacote de encaminhamento da Bússola). Ela mostra:
+- **o que travou o fluxo:** a regra (E1 a E7 ou vínculo), o motivo, o encaminhamento e a resposta exata que disparou a trava, reconstruída pelo histórico da jornada (por exemplo: *na pergunta "O imóvel está em obra ou reforma agora?", o cliente respondeu: Sim, obra ou reforma em andamento*). Se a trava veio direto dos dados, mostra o dado e a origem;
+- as pendências que ainda faltam confirmar;
+- todos os dados do imóvel, com valor, origem e confiança;
+- os sinais do cadastro e das transações (aluguel, financiamento, compras de material de construção e vidraçaria, dependentes, pet, área e bens estimados);
+- a situação de cada regra de elegibilidade e todas as respostas do cliente, inclusive da declaração final;
+- o plano indicado pelo score caso o especialista aceite;
+- um campo de parecer com três decisões simuladas (aceitar, pedir documentos ou vistoria, não aceitar e indicar outro produto).
+
+Assim o especialista não precisa repetir a entrevista.
+
 **5. Testes dos pacotes:**
 ```bash
 python estimativas/testes/teste_rapido.py
@@ -163,14 +190,16 @@ Histórico completo em `HISTORICO_DATATHON.md`.
 
 Todas as premissas ajustáveis ficam em arquivo de configuração, não no código:
 - `estimativas/config/premissas.json` e `coberturas/config/premissas.json`: fatores de padrão, percentuais, pisos, tetos, pesos do roubo, meses de aluguel e margens do seletor;
-- `score/premissas_score.json`: necessidades, corte crítico 0,8, peso 4 e empate de 3 pontos.
+- `score/premissas_score.json`: necessidades, corte crítico 0,8, peso 4 e empate de 3 pontos;
+- `frontend/src/preco.js` (`PREMISSAS_PRECO`): taxas anuais por cobertura, fatores do imóvel, custo das assistências, IOF e regras de parcelamento da página de valor.
 
 Os itens marcados **[premissa do time]** ou **VALIDAR** dependem da BB Seguros:
 - percentuais de danos por água, vendaval, impacto de veículos e despesas emergenciais;
 - RC familiar e pequenos reparos;
 - pesos do roubo;
 - limite de R$ 5 mil em material de construção que abre a pergunta de obra;
-- cortes do score.
+- cortes do score;
+- todas as taxas e fatores da estimativa de preço.
 
 "Instalações e pequenos reparos" aparece no guia como cobertura fixa, mas não está no catálogo CSV. Incluímos a cobertura e sinalizamos a divergência.
 
@@ -259,9 +288,12 @@ Usamos IA generativa (Claude, da Anthropic) ao longo de todo o datathon, como fe
 - O modelo de área foi validado em 46 imóveis à parte. Município não visto cai em medianas gerais, com confiança baixa.
 - A confiança geral é uma agregação definida pelo time a partir da confiança por campo.
 - O protótipo roda o motor em JavaScript, sem backend.
+- O valor da página de contratação é uma estimativa ilustrativa, não uma cotação: a tarifa real da BB Seguros não é pública. O preço só existe no protótipo; o lote e os templates não o calculam.
+- A Tela do Especialista é uma simulação: o parecer não é salvo e não muda o resultado do motor.
 
 **Próximos passos:**
 - validar premissas e limites com a BB;
+- trocar as premissas de `preco.js` pelas taxas oficiais da BB, ou calibrá-las com cotações reais do simulador;
 - CUB oficial de GO e atualização mensal automática;
 - rota FastAPI `/proxima-pergunta` para servir o protótipo e os agentes pelo mesmo motor;
 - verificação do E7 pelo endereço real contra a malha de Favelas e Comunidades Urbanas do IBGE;
